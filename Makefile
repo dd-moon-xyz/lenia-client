@@ -1,4 +1,4 @@
-.PHONY: setup run start stop restart logs
+.PHONY: setup run collect replay start stop restart logs replay-start replay-stop replay-restart replay-logs
 
 export PATH := $(HOME)/.local/bin:$(PATH)
 export XDG_RUNTIME_DIR ?= /run/user/$(shell id -u)
@@ -10,6 +10,12 @@ setup:
 
 run:
 	uv run lenia-client
+
+replay:
+	uv run lenia-replay
+
+collect:
+	uv run lenia-collect
 
 start:
 	pm2 start ecosystem.config.js --only lenia-client
@@ -25,3 +31,18 @@ restart:
 
 logs:
 	pm2 logs lenia-client
+
+replay-start:
+	pm2 start ecosystem.config.js --only lenia-replay
+	pm2 save
+
+replay-stop:
+	pm2 stop lenia-replay
+	pm2 save
+
+replay-restart:
+	pm2 restart ecosystem.config.js --only lenia-replay --update-env
+	pm2 save
+
+replay-logs:
+	pm2 logs lenia-replay
