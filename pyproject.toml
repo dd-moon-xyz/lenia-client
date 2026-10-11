@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools==84.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lenia-client"
+version = "0.1.0"
+description = "Fullscreen Lenia streaming client for the HyperPixel display"
+requires-python = ">=3.13"
+dependencies = ["pygame==2.6.1", "websockets==17.2"]
+
+[project.optional-dependencies]
+gpio = ["pigpio==1.78"]
+
+[project.scripts]
+lenia-client = "lenia_client.client:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["lenia_client*"]
