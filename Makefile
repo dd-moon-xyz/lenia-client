@@ -1,13 +1,15 @@
 .PHONY: setup run start stop restart logs
 
 export PATH := $(HOME)/.local/bin:$(PATH)
+export XDG_RUNTIME_DIR ?= /run/user/$(shell id -u)
+export WAYLAND_DISPLAY ?= wayland-0
+export SDL_VIDEODRIVER := wayland
 
 setup:
-	python3 -m venv --system-site-packages .venv
-	.venv/bin/python -m pip install -e .
+	uv sync
 
 run:
-	.venv/bin/lenia-client
+	uv run lenia-client
 
 start:
 	pm2 start ecosystem.config.js --only lenia-client

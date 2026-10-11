@@ -7,7 +7,7 @@ title: Lenia Client Setup
 
 ## Display and server
 
-CRUX uses a HyperPixel 2.1 Round display, a Wayland desktop, and Python 3.13. The desktop must run as `bastian` for the fullscreen client. Enable desktop autologin with `sudo raspi-config` if the display should work after reboot without manual login.
+CRUX uses a HyperPixel 2.1 Round display and a Wayland desktop. The client uses uv-managed Python 3.14. The desktop must run as `bastian` for the fullscreen client. Enable desktop autologin with `sudo raspi-config` if the display should work after reboot without manual login.
 
 Following `../hprs`, add this line to `/boot/firmware/config.txt`:
 
@@ -27,7 +27,9 @@ From `/home/bastian/projects/lenia-client`:
 make setup
 ```
 
-This creates `.venv` with access to system packages, reusing CRUX's installed pygame, and installs the client and WebSocket dependency. Fresh installations need Python 3.13 or newer, its venv support, and pygame. On the matching Raspberry Pi OS release, install these with `sudo apt install python3-venv python3-pygame`.
+This uses the installed `uv` in `~/.local/bin` to download a uv-managed Python 3.14 and sync the client and its dependencies into `.venv`. The project requires uv-managed Python and does not inherit system Python packages or require the OS's `python3-venv` package.
+
+The display dependency is `pygame-ce`, which supplies the `pygame` module and prebuilt Python 3.14 ARM64 wheels.
 
 ## Node.js and PM2
 
@@ -49,17 +51,19 @@ make restart
 make stop
 ```
 
-The [ecosystem configuration](../ecosystem.config.js) launches `.venv/bin/lenia-client` using the virtual environment's Python and the project directory as its working directory. It selects the Wayland driver, defaults `WAYLAND_DISPLAY` to `wayland-0`, and derives `XDG_RUNTIME_DIR` from the current user's UID. Existing values of those two variables take precedence. Output is unbuffered for PM2 logs.
+The [ecosystem configuration](../ecosystem.config.js) launches `~/.local/bin/uv run --no-sync lenia-client` with the project directory as its working directory. Run `make setup` first to sync the environment. It selects the Wayland driver, defaults `WAYLAND_DISPLAY` to `wayland-0`, and derives `XDG_RUNTIME_DIR` from the current user's UID. Existing values of those two variables take precedence. Output is unbuffered for PM2 logs.
 
 PM2 restarts the client after an exit, with a three-second delay. This allows recovery from server restarts or waiting for the desktop to become available. `make start`, `make stop`, and `make restart` save the PM2 process list. They target only `lenia-client`, leaving other PM2 applications alone. Use `make stop` to keep it stopped; closing the window causes PM2 to restart it.
 
 To change the server or supply a custom configuration, add an `args` entry to the application in `ecosystem.config.js`, then run `make restart`:
 
 ```javascript
-args: "--url ws://192.168.0.15:9876/ws --config /absolute/path/config.json",
+args: ["run", "--no-sync", "lenia-client", "--url", "ws://192.168.0.15:9876/ws", "--config", "/absolute/path/config.json"],
 ```
 
 The client preserves the preset FPS, population, simulation resolution, and timestep. It adds `output_size` matching the shorter display dimension, requesting 480×480 JPEGs on CRUX while retaining the 1024×1024 simulation. It adds no client FPS cap.
+
+The client keeps two frame requests in flight and replaces each request as its frame arrives. This allows the server to prepare the following frame during delivery and avoids waiting for a new round trip between simulation steps. The request count stays bounded; every received frame is displayed.
 
 ## Start after reboot
 
@@ -78,12 +82,14 @@ Stop the managed viewer before launching another one:
 
 ```bash
 make stop
-XDG_RUNTIME_DIR=/run/user/1000 WAYLAND_DISPLAY=wayland-0 SDL_VIDEODRIVER=wayland make run
+make run
 ```
 
-Use `--windowed` for a 480×480 window when invoking `.venv/bin/lenia-client` directly. Escape or Ctrl+C exits a foreground client. In circle mode, hold Space/C for outward steering or V for fast inward steering; release to restore inward movement.
+Use `uv run lenia-client --windowed` for a 480×480 window. Escape or Ctrl+C exits a foreground client. In circle mode, hold Space/C for outward steering or V for fast inward steering; release to restore inward movement.
 
-Backlight brightness is preserved by default. Optional GPIO brightness control requires `.venv/bin/python -m pip install -e '.[gpio]'`, a running `pigpiod`, and `--brightness 0` through `--brightness 255`.
+`make run` selects Wayland and defaults to `XDG_RUNTIME_DIR=/run/user/<your UID>` and `WAYLAND_DISPLAY=wayland-0`, matching PM2. Override those variables when the desktop uses a different socket. Startup logs show the SDL driver and display size. When launching with `uv run` directly from SSH, supply these variables too; otherwise SDL may select an invisible offscreen display.
+
+Backlight brightness is preserved by default. Optional GPIO brightness control requires `uv sync --extra gpio`, a running `pigpiod`, and `--brightness 0` through `--brightness 255`. Use `uv run --extra gpio lenia-client` for foreground runs with GPIO support; rerun `uv sync --extra gpio` after `make setup` before restarting PM2.
 
 ## Troubleshooting
 

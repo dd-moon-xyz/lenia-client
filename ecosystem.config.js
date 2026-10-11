@@ -1,12 +1,14 @@
 const path = require("path")
+const os = require("os")
 
 module.exports = {
     apps: [
         {
             name: "lenia-client",
             cwd: __dirname,
-            script: ".venv/bin/lenia-client",
-            interpreter: path.join(__dirname, ".venv/bin/python"),
+            script: path.join(os.homedir(), ".local/bin/uv"),
+            args: ["run", "--no-sync", "lenia-client"],
+            interpreter: "none",
             watch: false,
             min_uptime: 0,
             restart_delay: 3000,

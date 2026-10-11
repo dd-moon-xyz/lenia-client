@@ -43,6 +43,9 @@ async def display_stream(url: str, config: dict, screen: pygame.Surface, command
 
                 if status.get("status") == "started":
                     print(f"Streaming {status['size']}×{status['size']} at server preset {status['fps']} FPS", flush=True)
+                    # Keep two requests in flight so the server can prepare the
+                    # next frame while the current one is being delivered.
+                    await websocket.send("next")
                     await websocket.send("next")
 
                 if status.get("status") == "stopped":
@@ -75,6 +78,7 @@ async def run(url: str, config: dict, windowed: bool, brightness: int | None) ->
         config = {**config, "output_size": min(screen.get_size())}
         pygame.display.set_caption("Lenia client")
         pygame.mouse.set_visible(False)
+        print(f"Display: {pygame.display.get_driver()} {screen.get_width()}×{screen.get_height()}", flush=True)
         commands = asyncio.Queue()
         held = {}
         steering_keys = {pygame.K_SPACE: "outward", pygame.K_c: "outward", pygame.K_v: "inward_fast"}

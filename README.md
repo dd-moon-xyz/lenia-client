@@ -4,6 +4,8 @@ Fullscreen Raspberry Pi client for the Lenia WebSocket server, based on `../leni
 
 See the [setup wiki](wiki/setup.md) for display configuration, installation, PM2 startup, and troubleshooting.
 
+Python and dependencies are managed by the installed `uv` in `~/.local/bin`, using uv-managed Python 3.14.
+
 ```bash
 make setup
 make start
