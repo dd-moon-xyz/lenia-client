@@ -17,7 +17,7 @@ def main() -> None:
     parser.add_argument("--config", type=Path)
     parser.add_argument("--directory", type=Path, default=Path("recordings/default"))
     parser.add_argument("--seconds", type=float, default=30)
-    parser.add_argument("--output-size", type=int, default=480)
+    parser.add_argument("--output-size", type=int, default=800)
     args = parser.parse_args()
     try:
         if not 0 < args.seconds < float("inf") or args.output_size <= 0:

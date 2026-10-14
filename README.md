@@ -32,7 +32,7 @@ Run `make collect` to collect a fresh recording without opening a display,
 then `make replay` to play it. Every collection deletes all previous JPEG frames
 and the manifest in the selected directory before contacting the server.
 For custom settings, use
-`uv run lenia-collect --seconds 30 --output-size 480 --directory recordings/new`.
+`uv run lenia-collect --seconds 30 --output-size 800 --directory recordings/new`.
 The collector also accepts `--url` and `--config`.
 Use `uv run lenia-replay --windowed` for a window, or `--directory recordings/new`
 to capture a fresh recording. The script also accepts `--url`, `--config`, and

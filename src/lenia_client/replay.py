@@ -107,14 +107,14 @@ def main() -> None:
         manifest_path = args.directory / "manifest.json"
         if not args.record_only:
             pygame.display.init()
-            screen = pygame.display.set_mode((480, 480) if args.windowed else (0, 0), 0 if args.windowed else pygame.FULLSCREEN)
+            screen = pygame.display.set_mode((800, 800) if args.windowed else (0, 0), 0 if args.windowed else pygame.FULLSCREEN)
             pygame.display.set_caption("Lenia replay")
             pygame.mouse.set_visible(False)
         if manifest_path.exists() and not args.record_only:
             manifest = json.loads(manifest_path.read_text())
         else:
             config = load_preset(args.url) if args.config is None else json.loads(args.config.read_text())
-            config = {**config, "output_size": 480 if args.record_only else min(screen.get_size())}
+            config = {**config, "output_size": 800 if args.record_only else min(screen.get_size())}
             print(f"Recording {args.seconds:g} seconds from {args.url}…", flush=True)
             manifest = asyncio.run(record(args.url, config, args.directory, args.seconds))
         if not args.record_only:
