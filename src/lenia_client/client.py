@@ -60,18 +60,7 @@ async def display_stream(url: str, config: dict, screen: pygame.Surface, command
             display_frame(screen, message)
 
 
-async def run(url: str, config: dict, windowed: bool, brightness: int | None) -> None:
-    gpio = None
-    if brightness is not None:
-        import pigpio
-
-        gpio = pigpio.pi()
-        if not gpio.connected:
-            gpio.stop()
-            raise ValueError("GPIO is unavailable; start pigpiod or omit --brightness")
-
-        gpio.set_PWM_dutycycle(19, brightness)
-
+async def run(url: str, config: dict, windowed: bool) -> None:
     pygame.display.init()
     try:
         screen = pygame.display.set_mode((800, 800) if windowed else (0, 0), 0 if windowed else pygame.FULLSCREEN)
@@ -112,20 +101,17 @@ async def run(url: str, config: dict, windowed: bool, brightness: int | None) ->
 
     finally:
         pygame.display.quit()
-        if gpio is not None:
-            gpio.stop()
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Display the Lenia stream fullscreen on the HyperPixel")
+    parser = argparse.ArgumentParser(description="Display the Lenia stream fullscreen on HDMI")
     parser.add_argument("--url", default="ws://192.168.0.15:9876/ws")
     parser.add_argument("--config", type=Path, help="JSON start configuration; defaults to the server's /preset")
     parser.add_argument("--windowed", action="store_true", help="Use a 800×800 window instead of fullscreen")
-    parser.add_argument("--brightness", type=int, choices=range(256), metavar="0-255", help="Set GPIO 19 PWM (requires the gpio extra and pigpiod)")
     args = parser.parse_args()
     try:
         config = load_preset(args.url) if args.config is None else json.loads(args.config.read_text())
-        asyncio.run(run(args.url, config, args.windowed, args.brightness))
+        asyncio.run(run(args.url, config, args.windowed))
     except (OSError, ValueError, WebSocketException, pygame.error) as error:
         parser.exit(1, f"Error: {error}\n")
     except KeyboardInterrupt:

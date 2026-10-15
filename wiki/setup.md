@@ -7,15 +7,9 @@ title: Lenia Client Setup
 
 ## Display and server
 
-CRUX uses a HyperPixel 2.1 Round display and a Wayland desktop. The client uses uv-managed Python 3.14. The desktop must run as `bastian` for the fullscreen client. Enable desktop autologin with `sudo raspi-config` if the display should work after reboot without manual login.
+The Raspberry Pi uses an 800×800 HDMI display and a Wayland desktop. The client uses uv-managed Python 3.14. The desktop must run as `bastian` for the fullscreen client. Enable desktop autologin with `sudo raspi-config` if the display should work after reboot without manual login.
 
-Following `../hprs`, add this line to `/boot/firmware/config.txt`:
-
-```text
-dtoverlay=vc4-kms-dpi-hyperpixel2r
-```
-
-Disable I2C with `sudo raspi-config nonint do_i2c 1`, then reboot. CRUX already has a working display; these steps are for a fresh installation. The hprs reference recommends archived Raspberry Pi OS `raspios_arm64-2024-11-19` because HyperPixel compatibility depends on the OS/kernel. Preserve a known working display setup when updating the Pi.
+Use the standard `vc4-kms-v3d` driver in `/boot/firmware/config.txt` with no DPI display overlay. HDMI should be the only enabled desktop output so fullscreen playback consistently opens there after reboot. The connected display is currently `HDMI-A-2` at 800×800.
 
 The server must be reachable at `ws://192.168.0.15:9876/ws` and support `GET /preset` and the `output_size` start setting. The server supports concurrent viewers, each with an independent simulation and controls.
 
@@ -54,7 +48,7 @@ The display dependency is `pygame-ce`, which supplies the `pygame` module and pr
 
 ## Node.js and PM2
 
-CRUX uses Node.js 24 LTS for ARM64 under `~/.local/share/node`, with `node`, `npm`, and `npx` linked in `~/.local/bin`. PM2 uses the same user prefix. The Makefile adds `~/.local/bin` to PATH automatically.
+The Raspberry Pi uses Node.js 24 LTS for ARM64 under `~/.local/share/node`, with `node`, `npm`, and `npx` linked in `~/.local/bin`. PM2 uses the same user prefix. The Makefile adds `~/.local/bin` to PATH automatically.
 
 On a fresh machine, install Node.js 24 LTS for its architecture from the official Node.js distribution or your preferred version manager, then install PM2:
 
@@ -82,7 +76,7 @@ To change the server or supply a custom configuration, add an `args` entry to th
 args: ["run", "--no-sync", "lenia-client", "--url", "ws://192.168.0.15:9876/ws", "--config", "/absolute/path/config.json"],
 ```
 
-The client preserves the preset FPS, population, simulation resolution, and timestep. It adds `output_size` matching the shorter display dimension, requesting 480×480 JPEGs on CRUX while retaining the 1024×1024 simulation. It adds no client FPS cap.
+The client preserves the preset FPS, population, simulation resolution, and timestep. It adds `output_size` matching the shorter display dimension, requesting 800×800 JPEGs on the Raspberry Pi while retaining the 1024×1024 simulation. It adds no client FPS cap.
 
 The client keeps two frame requests in flight and replaces each request as its frame arrives. This allows the server to prepare the following frame during delivery and avoids waiting for a new round trip between simulation steps. The request count stays bounded; every received frame is displayed.
 
@@ -106,11 +100,9 @@ make stop
 make run
 ```
 
-Use `uv run lenia-client --windowed` for a 480×480 window. Escape or Ctrl+C exits a foreground client. In circle mode, hold Space/C for outward steering or V for fast inward steering; release to restore inward movement.
+Use `uv run lenia-client --windowed` for an 800×800 window. Escape or Ctrl+C exits a foreground client. In circle mode, hold Space/C for outward steering or V for fast inward steering; release to restore inward movement.
 
 `make run` selects Wayland and defaults to `XDG_RUNTIME_DIR=/run/user/<your UID>` and `WAYLAND_DISPLAY=wayland-0`, matching PM2. Override those variables when the desktop uses a different socket. Startup logs show the SDL driver and display size. When launching with `uv run` directly from SSH, supply these variables too; otherwise SDL may select an invisible offscreen display.
-
-Backlight brightness is preserved by default. Optional GPIO brightness control requires `uv sync --extra gpio`, a running `pigpiod`, and `--brightness 0` through `--brightness 255`. Use `uv run --extra gpio lenia-client` for foreground runs with GPIO support; rerun `uv sync --extra gpio` after `make setup` before restarting PM2.
 
 ## Troubleshooting
 
