@@ -7,7 +7,11 @@ name = "lenia-client"
 version = "0.1.0"
 description = "Fullscreen Lenia streaming client for an HDMI display"
 requires-python = ">=3.14,<3.15"
-dependencies = ["pygame-ce==2.5.8", "websockets==17.2", "tqdm>=4.67,<5"]
+dependencies = [
+    "pygame-ce==2.5.8",
+    "websockets==17.2",
+    "tqdm>=4.67,<5",
+]
 
 [project.scripts]
 lenia-client = "lenia_client.client:main"

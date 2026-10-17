@@ -35,6 +35,28 @@ class StreamTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(received, [config, *(["next"] * 5)])
         self.assertEqual([call.args[1] for call in draw.call_args_list], [b"first", b"second", b"third"])
 
+    async def test_structured_movement_is_sent_as_websocket_json(self):
+        movement = {"action": "movement", "direction": "outward", "speed_multiplier": 1.0}
+        commands = asyncio.Queue()
+        commands.put_nowait(movement)
+        received = []
+
+        async def server(websocket):
+            await websocket.recv()
+            await websocket.send(json.dumps({"status": "started", "size": 480, "fps": 60}))
+            await websocket.recv()
+            await websocket.recv()
+            await websocket.send(b"frame")
+            received.append(json.loads(await websocket.recv()))
+            self.assertEqual(await websocket.recv(), "next")
+            await websocket.send(json.dumps({"status": "stopped"}))
+
+        async with serve(server, "127.0.0.1", 0) as listener:
+            port = listener.sockets[0].getsockname()[1]
+            with patch("lenia_client.client.display_frame"):
+                await asyncio.wait_for(display_stream(f"ws://127.0.0.1:{port}", {}, None, commands), 5)
+        self.assertEqual(received, [movement])
+
 
 if __name__ == "__main__":
     unittest.main()

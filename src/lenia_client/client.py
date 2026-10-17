@@ -10,7 +10,7 @@ import pygame
 from websockets.asyncio.client import connect
 from websockets.exceptions import WebSocketException
 
-from lenia_client.proximity import monitor_proximity
+from lenia_client.sensors import monitor_sensors
 
 
 def load_preset(url: str) -> dict:
@@ -55,13 +55,14 @@ async def display_stream(url: str, config: dict, screen: pygame.Surface, command
                 continue
 
             while not commands.empty():
-                await websocket.send(commands.get_nowait())
+                command = commands.get_nowait()
+                await websocket.send(json.dumps(command) if isinstance(command, dict) else command)
 
             await websocket.send("next")
             display_frame(screen, message)
 
 
-async def run(url: str, config: dict, windowed: bool, proximity_device: str = "/dev/i2c-1", proximity_threshold: int = 30) -> None:
+async def run(url: str, config: dict, windowed: bool, proximity_device: str = "/dev/i2c-1", proximity_threshold: int = 30, motion_threshold: float = 0.12) -> None:
     pygame.display.init()
     try:
         screen = pygame.display.set_mode((800, 800) if windowed else (0, 0), 0 if windowed else pygame.FULLSCREEN)
@@ -73,7 +74,7 @@ async def run(url: str, config: dict, windowed: bool, proximity_device: str = "/
         stream = asyncio.create_task(display_stream(url, config, screen, commands))
         proximity = None
         if config.get("boundary") == "circle":
-            proximity = asyncio.create_task(monitor_proximity(commands, proximity_device, proximity_threshold))
+            proximity = asyncio.create_task(monitor_sensors(commands, proximity_device, proximity_threshold, motion_threshold))
         try:
             while not stream.done():
                 for event in pygame.event.get():
@@ -103,10 +104,11 @@ def main() -> None:
     parser.add_argument("--windowed", action="store_true", help="Use a 800×800 window instead of fullscreen")
     parser.add_argument("--proximity-device", default="/dev/i2c-1", help="LTR559 Linux I²C device")
     parser.add_argument("--proximity-threshold", type=int, default=30, help="Minimum presence threshold, 2–2047 raw counts; calibrated baseline + 15 also applies")
+    parser.add_argument("--motion-threshold", type=float, default=0.12, help="Acceleration change in g to trigger fast outward movement (default 0.12)")
     args = parser.parse_args()
     try:
         config = load_preset(args.url) if args.config is None else json.loads(args.config.read_text())
-        asyncio.run(run(args.url, config, args.windowed, args.proximity_device, args.proximity_threshold))
+        asyncio.run(run(args.url, config, args.windowed, args.proximity_device, args.proximity_threshold, args.motion_threshold))
     except (OSError, ValueError, WebSocketException, pygame.error) as error:
         parser.exit(1, f"Error: {error}\n")
     except KeyboardInterrupt:

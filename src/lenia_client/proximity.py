@@ -1,6 +1,5 @@
 """LTR559 proximity input through Linux i2c-dev (no system Python packages)."""
 
-import asyncio
 import fcntl
 import os
 import time
@@ -12,6 +11,7 @@ class ProximitySensor:
             raise ValueError("Proximity threshold must be between 2 and 2047")
         self.threshold = threshold
         self.active = False
+        self.value = 0
         self.confirmations = 0
         self.release_threshold = threshold // 2
         self.fd = os.open(device, os.O_RDWR)
@@ -47,11 +47,12 @@ class ProximitySensor:
         return os.read(self.fd, size)
 
     def poll(self):
-        """Return a steering command only when a fresh reading changes presence."""
+        """Return the new presence state only when a fresh reading changes it."""
         if not self._read(0x8C, 1)[0] & 1:
             return None
         low, high = self._read(0x8D, 2)
         value = low | ((high & 7) << 8)
+        self.value = 2047 if high & 0x80 else value
         # Saturation means a strong reflection; hysteresis avoids edge chatter.
         active = bool(high & 0x80) or value >= (self.release_threshold if self.active else self.threshold)
         if active == self.active:
@@ -62,37 +63,16 @@ class ProximitySensor:
             return None
         self.confirmations = 0
         self.active = active
-        print(f"Proximity: {value}, {'detected → outward' if active else 'clear → inward'}", flush=True)
-        return "outward" if active else "inward"
+        print(f"Proximity: {value}, {'detected' if active else 'clear'}", flush=True)
+        return active
+
+    @property
+    def strength(self):
+        """Relative reflection above detection, reaching full speed at +300 counts."""
+        return min(1.0, max(0.0, (self.value - self.threshold) / 300)) if self.active else 0.0
 
     def close(self):
         try:
             self._write(0x81, 0)
         finally:
             os.close(self.fd)
-
-
-async def monitor_proximity(commands, device="/dev/i2c-1", threshold=30):
-    # I²C transactions run off the display/event loop. Shield each transaction
-    # so cancellation cannot close its descriptor while the worker uses it.
-    opening = asyncio.create_task(asyncio.to_thread(ProximitySensor, device, threshold))
-    try:
-        sensor = await asyncio.shield(opening)
-    except asyncio.CancelledError:
-        sensor = await opening
-        await asyncio.to_thread(sensor.close)
-        raise
-    print(f"LTR559 proximity ready: {device}, threshold={threshold}, maximum LED/pulses", flush=True)
-    try:
-        while True:
-            reading = asyncio.create_task(asyncio.to_thread(sensor.poll))
-            try:
-                command = await asyncio.shield(reading)
-            except asyncio.CancelledError:
-                await reading
-                raise
-            if command is not None:
-                commands.put_nowait(command)
-            await asyncio.sleep(0.05)
-    finally:
-        await asyncio.to_thread(sensor.close)
