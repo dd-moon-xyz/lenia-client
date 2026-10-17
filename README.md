@@ -19,13 +19,13 @@ The client connects to `ws://192.168.0.15:9876/ws` and requests JPEGs matching t
 fullscreen in a continuous loop. Later runs use the saved recording without
 contacting the server. Playback uses a fixed frame rate and ignores capture delays.
 Frames are preloaded into memory and stored in
-`recordings/default/`, which Git ignores. Press Escape to exit.
+`recordings/default/`, which Git ignores. Use Ctrl+C to exit foreground playback. Keyboard events are ignored.
 
 To run replay through PM2, use `make replay-start`. Use `make replay-stop`,
 `make replay-restart`, and `make replay-logs` to manage it. Stop the live client
 with `make stop` before starting replay so both processes do not use the display
 at the same time. PM2 saves the process list for startup restoration and restarts
-replay if it exits, including when Escape is pressed; use `make replay-stop` to
+replay if it exits, including when its window is closed; use `make replay-stop` to
 keep it stopped.
 
 Run `make collect` to collect a fresh recording without opening a display,
@@ -37,3 +37,5 @@ The collector also accepts `--url` and `--config`.
 Use `uv run lenia-replay --windowed` for a window, or `--directory recordings/new`
 to capture a fresh recording. The script also accepts `--url`, `--config`, and
 `--seconds` (default 30).
+
+In circle mode, the live client uses the LTR559 proximity sensor to steer organisms outward while an object is detected and inward when it clears. Keyboard steering is disabled. See the setup wiki for I²C access and sensitivity settings.

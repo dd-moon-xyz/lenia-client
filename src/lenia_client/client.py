@@ -2,7 +2,6 @@ import argparse
 import asyncio
 import io
 import json
-from contextlib import suppress
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 from urllib.request import urlopen
@@ -10,6 +9,8 @@ from urllib.request import urlopen
 import pygame
 from websockets.asyncio.client import connect
 from websockets.exceptions import WebSocketException
+
+from lenia_client.proximity import monitor_proximity
 
 
 def load_preset(url: str) -> dict:
@@ -60,7 +61,7 @@ async def display_stream(url: str, config: dict, screen: pygame.Surface, command
             display_frame(screen, message)
 
 
-async def run(url: str, config: dict, windowed: bool) -> None:
+async def run(url: str, config: dict, windowed: bool, proximity_device: str = "/dev/i2c-1", proximity_threshold: int = 30) -> None:
     pygame.display.init()
     try:
         screen = pygame.display.set_mode((800, 800) if windowed else (0, 0), 0 if windowed else pygame.FULLSCREEN)
@@ -69,35 +70,27 @@ async def run(url: str, config: dict, windowed: bool) -> None:
         pygame.mouse.set_visible(False)
         print(f"Display: {pygame.display.get_driver()} {screen.get_width()}×{screen.get_height()}", flush=True)
         commands = asyncio.Queue()
-        held = {}
-        steering_keys = {pygame.K_SPACE: "outward", pygame.K_c: "outward", pygame.K_v: "inward_fast"}
         stream = asyncio.create_task(display_stream(url, config, screen, commands))
+        proximity = None
+        if config.get("boundary") == "circle":
+            proximity = asyncio.create_task(monitor_proximity(commands, proximity_device, proximity_threshold))
         try:
             while not stream.done():
                 for event in pygame.event.get():
-                    if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
+                    if event.type == pygame.QUIT:
                         return
 
-                    if config.get("boundary") == "circle":
-                        if event.type == pygame.KEYDOWN and event.key in steering_keys and event.key not in held:
-                            held[event.key] = steering_keys[event.key]
-                            commands.put_nowait(held[event.key])
-
-                        if event.type == pygame.KEYUP and event.key in held:
-                            del held[event.key]
-                            commands.put_nowait(next(reversed(held.values()), "inward"))
-
-                        if event.type == pygame.WINDOWFOCUSLOST:
-                            held.clear()
-                            commands.put_nowait("inward")
+                if proximity is not None and proximity.done():
+                    await proximity
 
                 await asyncio.sleep(0.01)
 
             await stream
         finally:
-            stream.cancel()
-            with suppress(asyncio.CancelledError):
-                await stream
+            tasks = [stream] + ([proximity] if proximity is not None else [])
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
 
     finally:
         pygame.display.quit()
@@ -108,10 +101,12 @@ def main() -> None:
     parser.add_argument("--url", default="ws://192.168.0.15:9876/ws")
     parser.add_argument("--config", type=Path, help="JSON start configuration; defaults to the server's /preset")
     parser.add_argument("--windowed", action="store_true", help="Use a 800×800 window instead of fullscreen")
+    parser.add_argument("--proximity-device", default="/dev/i2c-1", help="LTR559 Linux I²C device")
+    parser.add_argument("--proximity-threshold", type=int, default=30, help="Minimum presence threshold, 2–2047 raw counts; calibrated baseline + 15 also applies")
     args = parser.parse_args()
     try:
         config = load_preset(args.url) if args.config is None else json.loads(args.config.read_text())
-        asyncio.run(run(args.url, config, args.windowed))
+        asyncio.run(run(args.url, config, args.windowed, args.proximity_device, args.proximity_threshold))
     except (OSError, ValueError, WebSocketException, pygame.error) as error:
         parser.exit(1, f"Error: {error}\n")
     except KeyboardInterrupt:

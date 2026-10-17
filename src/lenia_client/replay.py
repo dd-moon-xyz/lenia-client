@@ -81,7 +81,7 @@ def replay(screen: pygame.Surface, directory: Path, manifest: dict) -> None:
     index = 0
     while True:
         for event in pygame.event.get():
-            if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
+            if event.type == pygame.QUIT:
                 return
         display_frame(screen, images[index])
         index = (index + 1) % len(images)

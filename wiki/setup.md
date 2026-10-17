@@ -100,7 +100,11 @@ make stop
 make run
 ```
 
-Use `uv run lenia-client --windowed` for an 800×800 window. Escape or Ctrl+C exits a foreground client. In circle mode, hold Space/C for outward steering or V for fast inward steering; release to restore inward movement.
+Use `uv run lenia-client --windowed` for an 800×800 window. Ctrl+C exits a foreground client. Keyboard events are ignored by both the live client and replay. In circle mode, the live client reads the LTR559 proximity sensor at I²C address `0x23` on `/dev/i2c-1`. Presence sends the same `outward` command previously used by C, moving organisms toward the visible circular edge; clearing the sensor restores `inward`. Replay shows recorded frames and has no sensor reaction.
+
+Enable I²C with `sudo raspi-config` and reboot. The desktop user needs read/write access to `/dev/i2c-1` (membership in the `i2c` group; log out and back in after changing groups). Sensor failures stop the live client with an error so PM2 can retry. Non-circle presets do not open the sensor.
+
+The sensor uses maximum 100 mA LED current, 100% duty cycle, 15 pulses, and a 50 ms measurement interval. Keep the sensor clear during the first second: 20 startup samples establish the background baseline. The trigger is the greater of 30 raw counts and baseline + 15, matching the reference app in `../rpi-dsp-hat-mini`. Two consecutive readings confirm both detection and clearing, with a lower release threshold to avoid chatter. Use `--proximity-threshold 50` to raise the minimum trigger if background reflections cause false triggers; `--proximity-device` selects another bus device. These settings maximize sensitivity but cannot guarantee a distance: Pimoroni describes roughly 5 cm useful range, depending on the target and environment. See the [Pimoroni driver register definitions](https://github.com/pimoroni/ltr559-python/blob/main/ltr559/__init__.py).
 
 `make run` selects Wayland and defaults to `XDG_RUNTIME_DIR=/run/user/<your UID>` and `WAYLAND_DISPLAY=wayland-0`, matching PM2. Override those variables when the desktop uses a different socket. Startup logs show the SDL driver and display size. When launching with `uv run` directly from SSH, supply these variables too; otherwise SDL may select an invisible offscreen display.
 
