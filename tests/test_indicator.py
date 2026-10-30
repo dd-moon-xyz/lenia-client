@@ -60,9 +60,9 @@ class IndicatorTests(unittest.TestCase):
             inputs.indicator.update.assert_called_with(near or moving)
 
     def test_indicator_failure_closes_open_sensors(self):
-        with patch('lenia_client.sensors.ProximitySensor') as near, patch('lenia_client.sensors.MotionSensor') as motion, patch('lenia_client.sensors.IndicatorLight', side_effect=OSError('GPIO busy')):
+        with patch('lenia_client.sensors.CameraSensor') as near, patch('lenia_client.sensors.MotionSensor') as motion, patch('lenia_client.sensors.IndicatorLight', side_effect=OSError('GPIO busy')):
             with self.assertRaisesRegex(OSError, 'GPIO busy'):
-                SensorInputs('/dev/i2c-1', 30, .12)
+                SensorInputs('/dev/i2c-1', .5, .12)
             near.return_value.close.assert_called_once()
             motion.return_value.close.assert_called_once()
 

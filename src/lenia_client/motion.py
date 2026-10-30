@@ -1,5 +1,3 @@
-"""LSM6DS3/LSM6DS3TR-C movement detection on the Multi-Sensor Stick."""
-
 import fcntl
 import math
 import os

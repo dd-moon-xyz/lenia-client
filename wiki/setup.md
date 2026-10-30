@@ -7,6 +7,8 @@ title: Lenia Client Setup
 
 The client is based on the sibling `../lenia` and `../hprs` projects. For physical connections, see [sensor and indicator LED wiring](wiring.md).
 
+For the AI Camera host firmware, pretrained models, and container requirements, see [Raspberry Pi AI Camera setup](ai-camera.md).
+
 ## Display and server
 
 The Raspberry Pi uses an 800×800 HDMI display and a Wayland desktop. The client uses uv-managed Python 3.14. The desktop must run as `bastian` for the fullscreen client. Enable desktop autologin with `sudo raspi-config` if the display should work after reboot without manual login.
@@ -72,11 +74,20 @@ The [ecosystem configuration](../ecosystem.config.js) launches `~/.local/bin/uv 
 
 PM2 restarts the client after an exit, with a three-second delay. This allows recovery from server restarts or waiting for the desktop to become available. `make start`, `make stop`, and `make restart` save the PM2 process list. They target only `lenia-client`, leaving other PM2 applications alone. Use `make stop` to keep it stopped; closing the window causes PM2 to restart it.
 
-To change the server or supply a custom configuration, add an `args` entry to the application in `ecosystem.config.js`, then run `make restart`:
+## Client configuration
 
-```javascript
-args: ["run", "--no-sync", "lenia-client", "--url", "ws://192.168.0.15:9876/ws", "--config", "/absolute/path/config.json"],
-```
+All live-client settings are validated by `pydantic-settings` in `src/lenia_client/settings.py`. Edit `.env` in the project working directory; `.env.example` lists every supported setting. On a fresh checkout, copy `.env.example` to `.env`. Environment variables override the file, including in Docker. Run `make restart` after changing settings for PM2. The live client no longer accepts CLI options.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `LENIA_URL` | `ws://192.168.0.15:9876/ws` | WebSocket server. |
+| `LENIA_CONFIG` | Unset | Optional JSON simulation start file; otherwise fetch the server preset. |
+| `LENIA_WINDOWED` | `false` | Set `true` for an 800×800 window. |
+| `LENIA_MOTION_DEVICE` | `/dev/i2c-1` | Motion sensor I²C device. |
+| `LENIA_MOTION_THRESHOLD` | `0.12` | Positive acceleration threshold in g. |
+| `LENIA_PERSON_PROXIMITY` | `0.5` | Person box height fraction; greater than 0 and less than 1. |
+
+For example, set `LENIA_PERSON_PROXIMITY=0.35` to react farther away. These settings configure the client locally; the optional JSON file configures the server simulation.
 
 The client preserves the preset FPS, population, simulation resolution, and timestep. It adds `output_size` matching the shorter display dimension, requesting 800×800 JPEGs on the Raspberry Pi while retaining the 1024×1024 simulation. It adds no client FPS cap.
 
@@ -102,15 +113,19 @@ make stop
 make run
 ```
 
-Use `uv run lenia-client --windowed` for an 800×800 window. Ctrl+C exits a foreground client. Keyboard events are ignored by both the live client and replay. In circle mode, the [indicator LED](wiring.md#optional-blinking-led) slowly pulses while both sensors are clear and fades off when either is active. In circle mode, the live client reads the LTR559 proximity sensor at I²C address `0x23` on `/dev/i2c-1`. The client sends JSON movement commands with independent direction and speed. Proximity clear selects `inward` at multiplier `1.0`; detected presence selects `outward` with a multiplier from `1.0` to `2.0` according to reflection strength. Movement of the sensor stick, detected by the accelerometer/gyroscope at `0x6a`, also selects outward with speed increasing from `1.0` to `2.0` according to movement strength. The stronger active input sets the speed. After 250 ms without movement, this override clears and restores the current proximity mode. The idle normal-inward command is also sent during startup. The server must support the structured movement API and native `m` command: rebuild the native worker and restart the server before using this client. Switching between outward speeds preserves trajectories; births remain paused in either outward mode. The WebSocket payload is `{"action":"movement","direction":"outward","speed_multiplier":1.0}`. Direction accepts `inward` or `outward`; the multiplier must be finite, greater than zero, and at most 10. It scales each organism’s individual base velocity. Legacy text commands remain supported by the server. Replay shows recorded frames and has no sensor reaction.
+Set `LENIA_WINDOWED=true` in `.env` for an 800×800 window. Ctrl+C exits a foreground client. Keyboard events are ignored by both the live client and replay.
 
-Enable I²C with `sudo raspi-config` and reboot. The desktop user needs read/write access to `/dev/i2c-1` (membership in the `i2c` group; log out and back in after changing groups). Sensor failures stop the live client with an error so PM2 can retry. Non-circle presets do not open the sensors. Both sensors must be available in circle mode.
+In circle mode, the AI Camera acts as a person proximity sensor and the accelerometer/gyroscope remains active. The physical LTR559 proximity sensor is disabled in the client: it is not opened, calibrated, or polled. The [indicator LED](wiring.md#optional-blinking-led) slowly pulses while both camera and motion are clear and fades off when either triggers. Replay and non-circle presets do not open these inputs.
 
-The sensor uses maximum 100 mA LED current, 100% duty cycle, 15 pulses, and a 50 ms measurement interval. Keep the sensor clear during the first second: 20 startup samples establish the background baseline. The trigger is the greater of 30 raw counts and baseline + 15, matching the reference app in `../rpi-dsp-hat-mini`. Two consecutive readings confirm both detection and clearing, with a lower release threshold to avoid chatter. Use `--proximity-threshold 50` to raise the minimum trigger if background reflections cause false triggers; `--proximity-device` selects another bus device. The motion sensor uses 104 Hz accelerometer and gyro readings, polled every 50 ms. It detects acceleration changes of at least 0.12 g between consecutive samples, or rotation of at least 20 degrees/second. `--motion-threshold` adjusts the acceleration threshold in g. Keep the stick still during startup. The motion sensor responds to physical stick movement, not nearby people moving.
+The camera uses pretrained SSD MobileNetV2 FPN Lite on the IMX500. Only person detections with confidence at least 0.60 count. The tallest person box determines proximity, including when multiple people are present. Escape starts after three detections with box height at least 50% of the image; it clears after three detections below 40%. This estimates closeness, not metres. See [AI Camera setup and tuning](ai-camera.md#person-proximity-control).
 
-Sensor speed scales continuously from ×1 to ×2 using the stronger active input. Proximity reaches ×2 at 300 raw reflection counts above its calibrated trigger; reflection is a relative closeness signal, not a distance measurement. Motion reaches ×2 at four times the acceleration or rotation threshold (0.48 g change between samples or 80 degrees/second with defaults). Speeds are rounded to 0.01 and sent only when changed. After 250 ms without movement, speed follows proximity again; with neither sensor active, organisms move inward at ×1. These mappings are initial sensitivity settings and may need adjustment for the object and installation.
+Tune the trigger with `LENIA_PERSON_PROXIMITY=0.35` in `.env`: lower values react farther away; higher values require a larger person in the image. Valid values are greater than 0 and less than 1; the default is `0.5`. Run `make restart` to apply changes under PM2.
 
-These settings maximize sensitivity but cannot guarantee a distance: Pimoroni describes roughly 5 cm useful range, depending on the target and environment. See the [Pimoroni driver register definitions](https://github.com/pimoroni/ltr559-python/blob/main/ltr559/__init__.py).
+Enable I²C with `sudo raspi-config` and reboot. The desktop user needs read/write access to `/dev/i2c-1` (membership in the `i2c` group; log out and back in after changing groups). The motion sensor at `0x6a` uses 104 Hz readings polled every 50 ms. Acceleration changes of at least 0.12 g or rotation of at least 20 degrees/second trigger escape. `LENIA_MOTION_THRESHOLD` adjusts the acceleration threshold; `LENIA_MOTION_DEVICE` selects the I²C device. After 250 ms without movement, the motion override clears. Keep the stick still during startup.
+
+Either camera proximity or motion selects `outward`; the strongest active input sets speed from ×1 to ×2. Camera speed increases from ×1 at the proximity threshold to ×2 when the person box fills the image height. Motion reaches ×2 at four times its trigger threshold. Speeds are rounded to 0.01 and sent only when changed. With both inputs clear, movement is `inward` at ×1. The camera runs separately so loading or waiting for camera frames does not block motion polling. Camera failure or stale inference stops the client with an error so PM2 can retry; the LTR559 is not used as a fallback.
+
+The WebSocket payload remains `{"action":"movement","direction":"outward","speed_multiplier":1.0}`. The server must support the structured movement API and native `m` command. The client preserves the server preset and simulation settings.
 
 `make run` selects Wayland and defaults to `XDG_RUNTIME_DIR=/run/user/<your UID>` and `WAYLAND_DISPLAY=wayland-0`, matching PM2. Override those variables when the desktop uses a different socket. Startup logs show the SDL driver and display size. When launching with `uv run` directly from SSH, supply these variables too; otherwise SDL may select an invisible offscreen display.
 

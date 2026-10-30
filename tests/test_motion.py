@@ -100,10 +100,10 @@ class SensorMonitorTests(unittest.IsolatedAsyncioTestCase):
                          [idle, near, moving, near, idle])
         inputs.close.assert_called_once()
 
-    async def test_partial_startup_failure_closes_proximity(self):
+    async def test_partial_startup_failure_closes_camera(self):
         from unittest.mock import patch
         from lenia_client.sensors import SensorInputs
-        with patch('lenia_client.sensors.ProximitySensor') as proximity, patch('lenia_client.sensors.MotionSensor', side_effect=OSError('missing motion sensor')):
+        with patch('lenia_client.sensors.CameraSensor') as camera, patch('lenia_client.sensors.MotionSensor', side_effect=OSError('missing motion sensor')):
             with self.assertRaisesRegex(OSError, 'missing motion sensor'):
-                SensorInputs('/dev/i2c-1', 30, .12)
-            proximity.return_value.close.assert_called_once()
+                SensorInputs('/dev/i2c-1', .5, .12)
+            camera.return_value.close.assert_called_once()

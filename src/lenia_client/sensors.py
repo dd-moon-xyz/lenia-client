@@ -1,10 +1,8 @@
-"""Combine proximity and motion into one steering command, with continuous speed from sensor intensity."""
-
 import asyncio
 
 from lenia_client.indicator import IndicatorLight
 from lenia_client.motion import MotionSensor
-from lenia_client.proximity import ProximitySensor
+from lenia_client.person import CameraSensor
 
 
 def steering_command(proximity_active, motion_active, proximity_strength=0.0, motion_strength=1.0):
@@ -20,8 +18,8 @@ def steering_command(proximity_active, motion_active, proximity_strength=0.0, mo
 
 
 class SensorInputs:
-    def __init__(self, device, proximity_threshold, motion_threshold):
-        self.proximity = ProximitySensor(device, proximity_threshold)
+    def __init__(self, device, person_proximity, motion_threshold):
+        self.proximity = CameraSensor(person_proximity)
         try:
             self.motion = MotionSensor(device, motion_threshold)
             try:
@@ -50,11 +48,11 @@ class SensorInputs:
                 self.proximity.close()
 
 
-async def monitor_sensors(commands, device='/dev/i2c-1', proximity_threshold=30, motion_threshold=0.12):
+async def monitor_sensors(commands, device='/dev/i2c-1', person_proximity=0.5, motion_threshold=0.12):
     # Establish the idle mode immediately, including during startup calibration.
     previous = steering_command(False, False)
     commands.put_nowait(previous)
-    opening = asyncio.create_task(asyncio.to_thread(SensorInputs, device, proximity_threshold, motion_threshold))
+    opening = asyncio.create_task(asyncio.to_thread(SensorInputs, device, person_proximity, motion_threshold))
     try:
         sensors = await asyncio.shield(opening)
     except asyncio.CancelledError:

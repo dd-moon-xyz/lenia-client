@@ -1,5 +1,3 @@
-"""Collect a fresh local frame sequence without opening a display."""
-
 import argparse
 import asyncio
 import json

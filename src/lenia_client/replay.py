@@ -1,5 +1,3 @@
-"""Capture a local stream once, then play it indefinitely without a server."""
-
 import argparse
 import asyncio
 import json
@@ -17,7 +15,7 @@ from .client import display_frame, load_preset
 
 
 async def record(url: str, config: dict, directory: Path, seconds: float) -> dict:
-    """Publish only complete captures, preserving the old one on interruption."""
+    # Publish only complete captures, preserving the old one on interruption.
     directory.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=directory.parent, prefix=".capture-") as temporary:
         staging = Path(temporary)

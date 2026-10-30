@@ -1,5 +1,3 @@
-"""LTR559 proximity input through Linux i2c-dev (no system Python packages)."""
-
 import fcntl
 import os
 import time
@@ -47,7 +45,7 @@ class ProximitySensor:
         return os.read(self.fd, size)
 
     def poll(self):
-        """Return the new presence state only when a fresh reading changes it."""
+        # Return the new presence state only when a fresh reading changes it.
         if not self._read(0x8C, 1)[0] & 1:
             return None
         low, high = self._read(0x8D, 2)
@@ -68,7 +66,7 @@ class ProximitySensor:
 
     @property
     def strength(self):
-        """Relative reflection above detection, reaching full speed at +300 counts."""
+        # Relative reflection above detection, reaching full speed at +300 counts.
         return min(1.0, max(0.0, (self.value - self.threshold) / 300)) if self.active else 0.0
 
     def close(self):

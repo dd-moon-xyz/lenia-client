@@ -1,8 +1,7 @@
-import argparse
 import asyncio
 import io
 import json
-from pathlib import Path
+import sys
 from urllib.parse import urlsplit, urlunsplit
 from urllib.request import urlopen
 
@@ -11,6 +10,7 @@ from websockets.asyncio.client import connect
 from websockets.exceptions import WebSocketException
 
 from lenia_client.sensors import monitor_sensors
+from lenia_client.settings import Settings
 
 
 def load_preset(url: str) -> dict:
@@ -62,19 +62,20 @@ async def display_stream(url: str, config: dict, screen: pygame.Surface, command
             display_frame(screen, message)
 
 
-async def run(url: str, config: dict, windowed: bool, proximity_device: str = "/dev/i2c-1", proximity_threshold: int = 30, motion_threshold: float = 0.12) -> None:
+async def run(settings: Settings, config: dict) -> None:
     pygame.display.init()
     try:
-        screen = pygame.display.set_mode((800, 800) if windowed else (0, 0), 0 if windowed else pygame.FULLSCREEN)
+        screen = pygame.display.set_mode((800, 800) if settings.windowed else (0, 0), 0 if settings.windowed else pygame.FULLSCREEN)
         config = {**config, "output_size": min(screen.get_size())}
         pygame.display.set_caption("Lenia client")
         pygame.mouse.set_visible(False)
         print(f"Display: {pygame.display.get_driver()} {screen.get_width()}×{screen.get_height()}", flush=True)
         commands = asyncio.Queue()
-        stream = asyncio.create_task(display_stream(url, config, screen, commands))
+        stream = asyncio.create_task(display_stream(settings.url, config, screen, commands))
         proximity = None
         if config.get("boundary") == "circle":
-            proximity = asyncio.create_task(monitor_sensors(commands, proximity_device, proximity_threshold, motion_threshold))
+            proximity = asyncio.create_task(monitor_sensors(commands, settings.motion_device,
+                                                          settings.person_proximity, settings.motion_threshold))
         try:
             while not stream.done():
                 for event in pygame.event.get():
@@ -98,19 +99,15 @@ async def run(url: str, config: dict, windowed: bool, proximity_device: str = "/
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Display the Lenia stream fullscreen on HDMI")
-    parser.add_argument("--url", default="ws://192.168.0.15:9876/ws")
-    parser.add_argument("--config", type=Path, help="JSON start configuration; defaults to the server's /preset")
-    parser.add_argument("--windowed", action="store_true", help="Use a 800×800 window instead of fullscreen")
-    parser.add_argument("--proximity-device", default="/dev/i2c-1", help="LTR559 Linux I²C device")
-    parser.add_argument("--proximity-threshold", type=int, default=30, help="Minimum presence threshold, 2–2047 raw counts; calibrated baseline + 15 also applies")
-    parser.add_argument("--motion-threshold", type=float, default=0.12, help="Acceleration change in g to trigger fast outward movement (default 0.12)")
-    args = parser.parse_args()
     try:
-        config = load_preset(args.url) if args.config is None else json.loads(args.config.read_text())
-        asyncio.run(run(args.url, config, args.windowed, args.proximity_device, args.proximity_threshold, args.motion_threshold))
+        if len(sys.argv) > 1:
+            raise ValueError('Client options are configured in .env; see .env.example')
+        settings = Settings()
+        config = load_preset(settings.url) if settings.config is None else json.loads(settings.config.read_text())
+        asyncio.run(run(settings, config))
     except (OSError, ValueError, WebSocketException, pygame.error) as error:
-        parser.exit(1, f"Error: {error}\n")
+        print(f"Error: {error}", file=sys.stderr)
+        raise SystemExit(1) from error
     except KeyboardInterrupt:
         pass
 
