@@ -7,29 +7,43 @@ import time
 
 class MotionDetector:
     def __init__(self, threshold_g=0.12, threshold_dps=20.0, hold_seconds=0.25):
-        if not all(math.isfinite(value) and value > 0 for value in (threshold_g, threshold_dps, hold_seconds)):
-            raise ValueError("Motion thresholds and hold time must be positive and finite")
+        if not all(math.isfinite(value) and value > 0
+                   for value in (threshold_g, threshold_dps, hold_seconds)):
+            raise ValueError("Motion thresholds and timing settings must be positive and finite")
         self.threshold_g = threshold_g
         self.threshold_dps = threshold_dps
         self.hold_seconds = hold_seconds
         self.previous_acceleration = None
         self.strength = 0.0
-        self.active_until = float('-inf')
+        self.vector = (0.0, 0.0)
+        self.quiet_since = None
+        self.armed = True
 
     def update(self, acceleration, rotation, now):
         if self.previous_acceleration is None:
             self.previous_acceleration = acceleration
-        delta = math.sqrt(sum((value - base) ** 2 for value, base in zip(acceleration, self.previous_acceleration)))
-        spin = math.sqrt(sum(value ** 2 for value in rotation))
-        if delta >= self.threshold_g or spin >= self.threshold_dps:
-            self.active_until = now + self.hold_seconds
-            intensity = max(delta / self.threshold_g, spin / self.threshold_dps)
-            self.strength = min(1.0, max(0.0, (intensity - 1.0) / 3.0))
+        change = tuple(value - base for value, base in zip(acceleration[:2], self.previous_acceleration[:2]))
+        delta = math.hypot(*change)
+        spin = math.hypot(*rotation[:2])
         self.previous_acceleration = acceleration
+        if delta >= self.threshold_g or spin >= self.threshold_dps:
+            self.quiet_since = None
+        else:
+            if self.quiet_since is None:
+                self.quiet_since = now
+
+        if not self.armed and self.quiet_since is not None and now - self.quiet_since >= self.hold_seconds:
+            self.armed = True
+
+        if self.armed and delta >= self.threshold_g:
+            self.vector = tuple(value / delta for value in change)
+            intensity = delta / self.threshold_g
+            self.strength = min(1.0, max(0.0, (intensity - 1.0) / 3.0))
+            self.armed = False
         return self.active(now)
 
     def active(self, now):
-        return now < self.active_until
+        return not self.armed
 
 
 class MotionSensor:
@@ -44,7 +58,7 @@ class MotionSensor:
             self._write(0x12, 0x44)  # BDU and register auto-increment, little endian.
             self._write(0x10, 0x40)  # Accelerometer: 104 Hz, ±2 g (0.061 mg/LSB).
             self._write(0x11, 0x40)  # Gyroscope: 104 Hz, ±245 dps (8.75 mdps/LSB).
-            print(f'Motion sensor ready at 0x6a: ID=0x{identity:02x}, threshold={threshold_g} g / 20 dps', flush=True)
+            print(f'Motion sensor ready at 0x6a: ID=0x{identity:02x}, threshold={threshold_g} g', flush=True)
         except BaseException:
             os.close(self.fd)
             raise
@@ -58,8 +72,9 @@ class MotionSensor:
 
     def poll(self):
         now = time.monotonic()
-        # Require fresh gyro and accelerometer data; never retrigger on stale data.
+        # Require fresh gyro and accelerometer data to confirm motion or quiet.
         if self._read(0x1E, 1)[0] & 3 != 3:
+            self.detector.quiet_since = None
             return self.detector.active(now)
         gx, gy, gz, ax, ay, az = struct.unpack('<6h', self._read(0x22, 12))
         return self.detector.update(
@@ -70,6 +85,10 @@ class MotionSensor:
     @property
     def strength(self):
         return self.detector.strength
+
+    @property
+    def vector(self):
+        return self.detector.vector
 
     def close(self):
         try:

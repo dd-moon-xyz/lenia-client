@@ -1,6 +1,6 @@
 ---
 type: Documentation
-title: Visual Style
+title: Visual style
 ---
 
 # Visual style
@@ -42,9 +42,9 @@ ASCII is the visual language for labels and structure; precise SVG geometry keep
 
 ## Reference diagrams
 
-- [Sensor wiring](images/multisensor-raspberry-pi.svg)
-- [Indicator LED wiring](images/indicator-led.svg)
+- [Sensor wiring](../images/multisensor-raspberry-pi.svg)
+- [Indicator LED wiring](../images/indicator-led.svg)
 
 When adding or changing diagrams, follow these references and this palette. Check that labels fit, wires reach the correct pins, and SVG XML and local links are valid.
 
-[Wiki index](index.md)
+[Section index](index.md) · [Wiki index](../index.md)

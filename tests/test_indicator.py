@@ -26,6 +26,14 @@ class IndicatorTests(unittest.TestCase):
         self.gpio.set_brightness.assert_called_with(0)
         self.assertGreater(self.advance(False, 2), 0)
 
+    def test_population_controls_brightness_independently_of_sensor_and_time(self):
+        for active in (False, True):
+            for fraction in (1, .5, .2, 0, 1):
+                self.now += 10
+                self.led.update(active, fraction)
+                self.assertAlmostEqual(self.led.brightness, .25 * fraction)
+                self.gpio.set_brightness.assert_called_with(.25 * fraction)
+
     def test_idle_pulse_stays_dim_after_eight_seconds(self):
         self.assertAlmostEqual(self.advance(False, 4), .25)
         self.assertAlmostEqual(self.advance(False, 4), .02)
@@ -51,7 +59,10 @@ class IndicatorTests(unittest.TestCase):
     def test_either_sensor_triggers_indicator(self):
         inputs = SensorInputs.__new__(SensorInputs)
         inputs.proximity = Mock(strength=0)
-        inputs.motion = Mock(strength=0)
+        inputs.motion = Mock(strength=0, vector=(0.0, 0.0))
+        inputs.vector_enabled = True
+        inputs.population = None
+        inputs.screen_x, inputs.screen_y = 'y', 'x'
         inputs.indicator = Mock()
         for near, moving in [(False, False), (True, False), (False, True), (True, True)]:
             inputs.proximity.active = near

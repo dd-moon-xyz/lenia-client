@@ -1,13 +1,13 @@
 ---
 type: Documentation
-title: Raspberry Pi Multi-Sensor Wiring
+title: Multi-Sensor Stick wiring
 ---
 
-# Connect a Pimoroni Multi-Sensor Stick to Raspberry Pi
+# Multi-Sensor Stick wiring
 
 For Raspberry Pi computers with a standard **40-pin GPIO header** (not Raspberry Pi Pico).
 
-![Colour-coded sensor wiring and Raspberry Pi header pin positions](images/multisensor-raspberry-pi.svg)
+![Colour-coded sensor wiring and Raspberry Pi header pin positions](../images/multisensor-raspberry-pi.svg)
 
 The diagram is an SVG drawn with code. Colours match Pimoroni’s **500 mm JST-SH to JST-SH cable with black shrouding**: red = 3.3 V, black = GND, green = SDA, white = SCL. White is outlined in grey for visibility.
 
@@ -54,3 +54,5 @@ Expected addresses: **`0x23`** (LTR559 light/proximity), **`0x6a`** (LSM6DS3 acc
 - [Pimoroni cable specifications and 500 mm colour mapping](https://shop.pimoroni.com/products/jst-sh-cable-qwiic-stemma-qt-compatible)
 - [Raspberry Pi GPIO documentation](https://www.raspberrypi.com/documentation/computers/raspberry-pi.html)
 - [Raspberry Pi configuration documentation](https://www.raspberrypi.com/documentation/configuration/)
+
+[Section index](index.md) · [Wiki index](../index.md)

@@ -33,7 +33,10 @@ def display_frame(screen: pygame.Surface, message: bytes) -> None:
     pygame.display.flip()
 
 
-async def display_stream(url: str, config: dict, screen: pygame.Surface, commands: asyncio.Queue) -> None:
+async def display_stream(url: str, config: dict, screen: pygame.Surface, commands: asyncio.Queue, population=None) -> None:
+    if population is not None:
+        config = {**config, "population_updates": True}
+
     async with connect(url, max_size=4 * 1024 * 1024, max_queue=1, compression=None) as websocket:
         await websocket.send(json.dumps(config))
         async for message in websocket:
@@ -49,13 +52,18 @@ async def display_stream(url: str, config: dict, screen: pygame.Surface, command
                     await websocket.send("next")
                     await websocket.send("next")
 
+                if status.get("status") == "population" and population is not None:
+                    population['fraction'] = status['alive'] / status['total']
+
                 if status.get("status") == "stopped":
                     return
 
                 continue
 
-            while not commands.empty():
+            if not commands.empty():
                 command = commands.get_nowait()
+                while not commands.empty():
+                    command = commands.get_nowait()
                 await websocket.send(json.dumps(command) if isinstance(command, dict) else command)
 
             await websocket.send("next")
@@ -71,11 +79,15 @@ async def run(settings: Settings, config: dict) -> None:
         pygame.mouse.set_visible(False)
         print(f"Display: {pygame.display.get_driver()} {screen.get_width()}×{screen.get_height()}", flush=True)
         commands = asyncio.Queue()
-        stream = asyncio.create_task(display_stream(settings.url, config, screen, commands))
+        population = {'fraction': 1.0} if config.get('simulation') == 'hexapod' else None
+        stream = asyncio.create_task(display_stream(settings.url, config, screen, commands, population))
         proximity = None
         if config.get("boundary") == "circle":
             proximity = asyncio.create_task(monitor_sensors(commands, settings.motion_device,
-                                                          settings.person_proximity, settings.motion_threshold))
+                                                          settings.person_proximity, settings.motion_threshold,
+                                                          settings.motion_screen_x, settings.motion_screen_y,
+                                                          config.get('simulation') == 'hexapod', population))
+
         try:
             while not stream.done():
                 for event in pygame.event.get():

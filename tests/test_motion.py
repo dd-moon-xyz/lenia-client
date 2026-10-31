@@ -7,57 +7,86 @@ from lenia_client.sensors import steering_command
 
 
 class MotionTests(unittest.TestCase):
+    def detector(self, **settings):
+        detector = MotionDetector(**settings)
+        detector.update((0, 0, 1), (0, 0, 0), 0)
+        return detector
+
+    def test_signed_acceleration_vectors_and_diagonals(self):
+        for acceleration, expected in (((.2, 0, 1), (1, 0)), ((0, -.2, 1), (0, -1)),
+                                       ((.3, .4, 1), (.6, .8))):
+            detector = self.detector()
+            self.assertTrue(detector.update(acceleration, (0, 0, 0), .05))
+            for actual, target in zip(detector.vector, expected):
+                self.assertAlmostEqual(actual, target)
+
+    def test_continued_motion_keeps_initial_direction_and_strength_without_timeout(self):
+        detector = self.detector()
+        detector.update((.2, 0, 1), (0, 0, 0), .05)
+        expected = detector.vector, detector.strength
+        for now, acceleration in ((.1, (-1, 1, 1)), (6, (1, -1, 1)), (20, (0, 2, 1))):
+            self.assertTrue(detector.update(acceleration, (100, -100, 0), now))
+            self.assertEqual((detector.vector, detector.strength), expected)
+
+    def test_quiet_releases_direction_and_next_gesture_selects_a_new_one(self):
+        detector = self.detector()
+        detector.update((.2, 0, 1), (0, 0, 0), .05)
+        self.assertTrue(detector.update((.2, 0, 1), (0, 0, 0), .1))
+        self.assertTrue(detector.update((.2, 0, 1), (0, 0, 0), .3))
+        self.assertFalse(detector.update((.2, 0, 1), (0, 0, 0), .4))
+        self.assertTrue(detector.update((.2, -.3, 1), (0, 0, 0), .5))
+        self.assertEqual(detector.vector, (0, -1))
+
+    def test_rotation_alone_does_not_trigger_and_prevents_release(self):
+        detector = self.detector()
+        self.assertFalse(detector.update((0, 0, 1), (100, 100, 0), .05))
+        detector.update((.2, 0, 1), (0, 0, 0), .1)
+        self.assertTrue(detector.update((.2, 0, 1), (30, 0, 0), 6))
+        self.assertTrue(detector.update((.2, 0, 1), (0, 0, 0), 6.1))
+        self.assertFalse(detector.update((.2, 0, 1), (0, 0, 0), 6.4))
+
     def test_stationary_gravity_in_any_orientation_does_not_trigger(self):
-        for gravity in [(0, 0, 1), (1, 0, 0), (0, -1, 0)]:
+        for gravity in ((0, 0, 1), (1, 0, 0), (0, -1, 0)):
             detector = MotionDetector()
             for sample in range(20):
                 self.assertFalse(detector.update(gravity, (0, 0, 0), sample * .05))
 
-    def test_stillness_clears_motion_after_quiet_interval(self):
-        detector = MotionDetector()
-        detector.update((0, 0, 1), (0, 0, 0), 0)
-        self.assertTrue(detector.update((.2, 0, 1), (0, 0, 0), .05))
-        self.assertTrue(detector.update((.2, 0, 1), (0, 0, 0), .2))
-        self.assertFalse(detector.update((.2, 0, 1), (0, 0, 0), .31))
+    def test_z_only_and_xy_noise_do_not_trigger(self):
+        detector = self.detector()
+        self.assertFalse(detector.update((.01, -.01, 2), (0, 0, 100), .05))
 
-    def test_stopping_in_new_orientation_restores_proximity_base_state(self):
-        detector = MotionDetector()
-        detector.update((0, 0, 1), (0, 0, 0), 0)
-        self.assertTrue(detector.update((1, 0, 0), (0, 30, 0), .05))
-        self.assertTrue(detector.update((1, 0, 0), (0, 0, 0), .2))
-        moving = detector.update((1, 0, 0), (0, 0, 0), .31)
-        self.assertFalse(moving)
-        for proximity in (False, True):
-            self.assertEqual(steering_command(proximity, moving), steering_command(proximity, False))
+    def test_perturbation_strength_increases_and_caps(self):
+        strengths = tuple(self.trigger_strength(acceleration) for acceleration in (.12, .24, .36, .48, 1))
+        for actual, expected in zip(strengths, (0, 1/3, 2/3, 1, 1)):
+            self.assertAlmostEqual(actual, expected)
 
-    def test_rotation_retriggers_hold(self):
-        detector = MotionDetector()
-        self.assertTrue(detector.update((0, 0, 1), (0, 25, 0), 0))
-        self.assertTrue(detector.update((0, 0, 1), (0, 25, 0), .9))
-        self.assertTrue(detector.active(1.1))
-        self.assertFalse(detector.active(1.16))
+    def trigger_strength(self, acceleration):
+        detector = self.detector()
+        detector.update((acceleration, 0, 1), (0, 0, 0), .05)
+        return detector.strength
 
-    def test_motion_strength_increases_and_caps(self):
-        strengths = []
-        for rotation in (20, 40, 60, 80, 160):
-            detector = MotionDetector()
-            self.assertTrue(detector.update((0, 0, 1), (rotation, 0, 0), 0))
-            strengths.append(detector.strength)
-        self.assertEqual(strengths, [0, 1/3, 2/3, 1, 1])
+    def test_movement_follows_mapped_vector_with_escape(self):
+        command = steering_command(False, True, 0, .2, (.6, .8))
+        self.assertEqual(command, {'action': 'movement', 'direction': 'vector',
+                                  'vector': {'x': .8, 'y': .6}, 'escape': True,
+                                  'speed_multiplier': 1.2})
+        inverted = steering_command(False, True, motion_vector=(1, 0), screen_x='-x', screen_y='y')
+        self.assertEqual(inverted['vector'], {'x': -1, 'y': 0})
+        self.assertEqual(steering_command(False, False, motion_vector=(1, 0))['direction'], 'inward')
 
-    def test_speed_scales_with_stronger_active_sensor(self):
-        for strength, speed in ((0, 1), (.25, 1.25), (.75, 1.75), (1, 2), (5, 2)):
-            for near, moving in ((True, False), (False, True)):
-                command = steering_command(near, moving, strength, strength)
-                self.assertEqual(command['direction'], 'outward')
-                self.assertEqual(command['speed_multiplier'], speed)
-        self.assertEqual(steering_command(True, True, .8, .2)['speed_multiplier'], 1.8)
-        self.assertEqual(steering_command(False, False, 1, 1)['speed_multiplier'], 1)
+    def test_camera_keeps_radial_escape_and_its_own_speed_during_pulse(self):
+        for strength in (0, .25, .8, 1):
+            camera_only = steering_command(True, False, strength)
+            during_pulse = steering_command(True, True, strength, 1, (.6, .8))
+            self.assertEqual(during_pulse, camera_only)
+            self.assertEqual(during_pulse['direction'], 'outward')
+            self.assertEqual(during_pulse['speed_multiplier'], 1 + strength)
 
-    def test_invalid_thresholds(self):
-        for threshold in [0, -1, float('nan'), float('inf')]:
-            with self.assertRaises(ValueError):
-                MotionDetector(threshold_g=threshold)
+    def test_invalid_detector_settings(self):
+        for field in ('threshold_g', 'threshold_dps', 'hold_seconds'):
+            for value in (0, -1, float('nan'), float('inf')):
+                with self.subTest(field=field, value=value), self.assertRaises(ValueError):
+                    MotionDetector(**{field: value})
 
     def test_sensor_decodes_little_endian_acceleration_and_gyro(self):
         sensor = MotionSensor.__new__(MotionSensor)
@@ -68,22 +97,67 @@ class MotionTests(unittest.TestCase):
         self.assertAlmostEqual(acceleration[2], .999424)
         self.assertEqual(rotation, (8.75, -17.5, 0))
 
-    def test_stale_readings_do_not_retrigger_motion(self):
-        sensor = MotionSensor.__new__(MotionSensor)
-        sensor.detector = Mock()
-        sensor._read = Mock(return_value=b'\x00')
-        sensor.poll()
-        sensor.detector.update.assert_not_called()
-        sensor.detector.active.assert_called_once()
+    def test_stale_readings_cannot_release_or_change_direction(self):
+        from unittest.mock import patch
 
-    def test_motion_overrides_both_proximity_states(self):
-        self.assertEqual(steering_command(False, False), {'action': 'movement', 'direction': 'inward', 'speed_multiplier': 1.0})
-        self.assertEqual(steering_command(True, False), {'action': 'movement', 'direction': 'outward', 'speed_multiplier': 1.0})
-        for proximity in (False, True):
-            self.assertEqual(steering_command(proximity, True), {'action': 'movement', 'direction': 'outward', 'speed_multiplier': 2.0})
+        sensor = MotionSensor.__new__(MotionSensor)
+        sensor.detector = self.detector()
+        sensor.detector.update((.2, 0, 1), (0, 0, 0), .05)
+        sensor._read = Mock(return_value=b'\x00')
+        with patch('lenia_client.motion.time.monotonic', side_effect=(.5, 1.1)):
+            self.assertTrue(sensor.poll())
+            self.assertTrue(sensor.poll())
+        self.assertEqual(sensor.detector.vector, (1, 0))
 
 
 class SensorMonitorTests(unittest.IsolatedAsyncioTestCase):
+    async def test_sensor_poll_maps_vector_and_keeps_catalog_controls_radial(self):
+        from unittest.mock import patch
+        from lenia_client.sensors import SensorInputs
+
+        with patch('lenia_client.sensors.CameraSensor') as camera, \
+                patch('lenia_client.sensors.MotionSensor') as motion, \
+                patch('lenia_client.sensors.IndicatorLight'):
+            camera.return_value.active = False
+            camera.return_value.strength = .8
+            motion.return_value.poll.return_value = True
+            motion.return_value.strength = .2
+            motion.return_value.vector = (.6, .8)
+            inputs = SensorInputs('/dev/i2c-1', .5, .12, '-x', 'y')
+            self.assertEqual(inputs.poll()['vector'], {'x': -.6, 'y': .8})
+            self.assertEqual(inputs.poll()['speed_multiplier'], 1.2)
+            camera.return_value.active = True
+            self.assertEqual(inputs.poll(), steering_command(True, False, .8))
+            camera.return_value.active = False
+            inputs.vector_enabled = False
+            self.assertEqual(inputs.poll()['direction'], 'outward')
+            inputs.close()
+
+    async def test_camera_transitions_preserve_latched_motion_direction(self):
+        from unittest.mock import patch
+        from lenia_client.sensors import SensorInputs
+
+        detector = MotionDetector()
+        detector.update((0, 0, 1), (0, 0, 0), 0)
+        detector.update((.2, 0, 1), (0, 0, 0), .05)
+        with patch('lenia_client.sensors.CameraSensor') as camera, \
+                patch('lenia_client.sensors.MotionSensor') as motion, \
+                patch('lenia_client.sensors.IndicatorLight'):
+            inputs = SensorInputs('/dev/i2c-1', .5, .12)
+            motion.return_value.vector = detector.vector
+            motion.return_value.strength = detector.strength
+            motion.return_value.poll.side_effect = (True, True, True, False)
+            camera.return_value.strength = .8
+            camera.return_value.active = False
+            self.assertEqual(inputs.poll()['direction'], 'vector')
+            camera.return_value.active = True
+            self.assertEqual(inputs.poll(), steering_command(True, False, .8))
+            camera.return_value.active = False
+            self.assertEqual(inputs.poll()['direction'], 'vector')
+            self.assertEqual(inputs.poll()['direction'], 'inward')
+            self.assertEqual(detector.vector, (1, 0))
+            inputs.close()
+
     async def test_initial_mode_and_transitions_and_cleanup(self):
         import asyncio
         from unittest.mock import patch

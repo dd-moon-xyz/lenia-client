@@ -14,7 +14,7 @@ class HardwarePWM:
         chips = [p for p in root.glob('pwmchip*')
                  if p.resolve().parent.parent.name == '1f00098000.pwm']
         if len(chips) != 1:
-            raise OSError('RP1 PWM0 controller unavailable; see wiki/wiring.md')
+            raise OSError('RP1 PWM0 controller unavailable; see wiki/wiring/indicator-led.md')
         chip = chips[0]
         self.channel = chip / 'pwm2'
         if not self.channel.exists():
@@ -78,7 +78,12 @@ class IndicatorLight:
         self.gpio.set_brightness(self.brightness)
         print('Indicator ready: GPIO18 / pin 12, 3.3 V hardware PWM at 2 kHz', flush=True)
 
-    def update(self, active):
+    def update(self, active, population_fraction=None):
+        if population_fraction is not None:
+            self.brightness = self.MAX_BRIGHTNESS * min(1.0, max(0.0, population_fraction))
+            self.gpio.set_brightness(self.brightness)
+            return
+
         now = self.clock()
         if active != self.active:
             self.fade_started = now

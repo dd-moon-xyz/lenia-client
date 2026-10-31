@@ -46,7 +46,9 @@ class PersonTests(unittest.TestCase):
             self.assertEqual(detector.active, expected)
             self.assertEqual(steering_command(detector.active, False, detector.strength)['direction'],
                              'outward' if expected else 'inward')
-            self.assertEqual(steering_command(detector.active, True, detector.strength, 1)['speed_multiplier'], 2)
+            command = steering_command(detector.active, True, detector.strength, 1)
+            expected_speed = round(1 + detector.strength, 2) if expected else 2
+            self.assertEqual(command['speed_multiplier'], expected_speed)
 
     def test_invalid_thresholds(self):
         for threshold in (0, 1, -1, float('nan'), float('inf')):

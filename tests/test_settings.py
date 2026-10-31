@@ -10,6 +10,14 @@ from lenia_client.settings import Settings
 
 
 class SettingsTests(unittest.TestCase):
+    def test_motion_axes_are_distinct_and_allow_mounting_inversions(self):
+        with patch.dict(os.environ, {}, clear=True):
+            settings = Settings(_env_file=None, motion_screen_x='-x', motion_screen_y='y')
+            self.assertEqual(settings.motion_screen_x, '-x')
+            for x, y in (('x', '-x'), ('y', 'y'), ('z', 'x')):
+                with self.assertRaises(ValidationError):
+                    Settings(_env_file=None, motion_screen_x=x, motion_screen_y=y)
+
     def test_dotenv_loads_all_client_options_and_environment_overrides(self):
         with TemporaryDirectory() as directory, patch.dict(os.environ, {}, clear=True):
             env = Path(directory) / '.env'
@@ -31,9 +39,10 @@ class SettingsTests(unittest.TestCase):
             for value in ('0', '1', '-1', 'nan', 'inf', 'bad'):
                 with self.subTest(value=value), self.assertRaises(ValidationError):
                     Settings(_env_file=None, person_proximity=value)
-            for value in (0, -1, float('nan'), float('inf')):
-                with self.assertRaises(ValidationError):
-                    Settings(_env_file=None, motion_threshold=value)
+            for field in ('motion_threshold',):
+                for value in (0, -1, float('nan'), float('inf')):
+                    with self.subTest(field=field, value=value), self.assertRaises(ValidationError):
+                        Settings(_env_file=None, **{field: value})
 
     def test_main_passes_settings_to_runtime_and_loads_json_preset(self):
         from lenia_client.client import main
